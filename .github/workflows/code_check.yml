@@ -1,0 +1,57 @@
+name: python code sanity check
+
+on:
+  pull_request:
+    paths:
+      - '**'
+
+jobs:
+  check:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3.5.2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4.6.0
+      with:
+        python-version: 3.9
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install --upgrade setuptools setuptools-scm[toml]
+        pip install build check-wheel-contents
+
+    - name: Analysing the code with isort
+      run: |
+        isort . --check-only --diff
+
+    - name: Analysing the code with black
+      run: |
+        black . --check --diff
+
+    - name: Analysing the code with pylint
+      run: |
+        pylint src
+
+    - name: Analysing the code with bandit
+      run: |
+        bandit -r . --skip B101
+
+    - name: Analysing the code with mypy
+      run: |
+        mypy --explicit-package-bases --disallow-untyped-defs .
+
+    - name: Build up wheel
+      run: |
+        python -m build
+
+    - name: Analysing the wheel
+      run: |
+        check-wheel-contents dist
+
+    - name: Run pytest
+      run: |
+        pytest src/logic/test_etl.py && echo '::set-output name=success::true'
