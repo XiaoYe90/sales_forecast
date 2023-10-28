@@ -1,5 +1,5 @@
 pandas>=1.5.3,<1.6
-pyspark==3.4.1
+pandera>=0.16.1,<0.17
 pytest==6.2.5
 isort[pyproject]==5.12.0
 black==23.3.0
