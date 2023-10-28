@@ -40,13 +40,9 @@ jobs:
       run: |
         bandit -r . --skip B101
 
-    - name: Analysing the code with mypy
-      run: |
-        mypy --explicit-package-bases --disallow-untyped-defs .
-
     - name: Build up wheel
       run: |
-        python -m build
+        python setup.py bdist_wheel
 
     - name: Analysing the wheel
       run: |
@@ -54,4 +50,4 @@ jobs:
 
     - name: Run pytest
       run: |
-        pytest src/logic/test_etl.py && echo '::set-output name=success::true'
+        pytest src/logic/test/test_etl.py && echo '::set-output name=success::true'

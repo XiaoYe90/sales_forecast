@@ -55,7 +55,9 @@ class DataCalculator:
             ),
         }
 
-    def _read_file_and_create_object(self, file_path: str, object_class: Type) -> ABObject:
+    def _read_file_and_create_object(
+        self, file_path: str, object_class: Type
+    ) -> ABObject:
         """Read the CSV file and return a new object of the specified class.
 
         Args:

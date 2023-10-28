@@ -19,7 +19,7 @@ class ABObject:
             df: A DataFrame containing AB data.
         """
         # pylint: disable=invalid-name
-        self._df = pd.DataFrame(ABDataFrameSchema.validate(df)) # type: ignore
+        self._df = pd.DataFrame(ABDataFrameSchema.validate(df))  # type: ignore
 
     @property
     def df(self) -> pd.DataFrame:

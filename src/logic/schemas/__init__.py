@@ -1,1 +1,1 @@
-"""Sellers."""
+"""Schemas."""
