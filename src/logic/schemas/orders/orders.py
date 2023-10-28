@@ -23,6 +23,9 @@ class OrdersObject(ABObject):
     def df(self) -> pd.DataFrame:
         """Returns a copy of the internal DataFrame in order to avoid any external change to df.
 
+        Note: Using .copy() can increase memory usage. Make sure you have enough RAM to handle
+        the potential increase in memory consumption.
+
         Returns:
             pd.DataFrame: A copy of the internal DataFrame.
         """
