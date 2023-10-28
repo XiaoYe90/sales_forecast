@@ -6,3 +6,4 @@ black==23.3.0
 pylint==2.17.4
 bandit[toml]==1.7.5
 pyarrow
+wheel
