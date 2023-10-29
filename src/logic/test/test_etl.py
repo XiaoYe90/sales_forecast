@@ -64,20 +64,3 @@ def test_calculate_product_ratings(setup_calculator: tuple) -> None:
     )
     assert isinstance(result_with_product_list, pd.DataFrame)
     assert all(result_with_product_list["product_id"].isin(product_list))
-
-
-def test_calculate_product_sales_by_city(setup_calculator: tuple) -> None:
-    """Test the calculate_product_sales_by_city() method for DataCalculator."""
-    data_object, _ = setup_calculator
-    product_list = ["4244733e06e7ecb4970a6e2683c13e61"]
-
-    # Test calculate_product_sales_by_city() without product_list
-    result_no_product_list = data_object.calculate_product_sales_by_city()
-    assert isinstance(result_no_product_list, pd.DataFrame)
-
-    # Test calculate_product_sales_by_city() with product_list
-    result_with_product_list = data_object.calculate_product_sales_by_city(
-        product_list=product_list
-    )
-    assert isinstance(result_with_product_list, pd.DataFrame)
-    assert all(result_with_product_list["product_id"].isin(product_list))

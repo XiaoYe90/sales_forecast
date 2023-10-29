@@ -2,11 +2,11 @@
 
 import os
 import shutil
-from typing import List, Optional, Type
+from collections import defaultdict
+from typing import Dict, List, Optional, Type
 
+import dask.dataframe as dd
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 from logic.schemas.base_schema import ABObject
 from logic.schemas.customer.customer import CustomersObject
@@ -124,16 +124,11 @@ class DataCalculator:
         """
         summary_df = self.calculate_summary(product_list=product_list)
         product_ratings_df = self.calculate_product_ratings(product_list=product_list)
-        product_sales_by_city_df = self.calculate_product_sales_by_city(
-            product_list=product_list
-        )
 
         # Merge the DataFrames into a single output DataFrame
-        output_df = (
-            summary_df.merge(product_ratings_df, on="product_id", how="outer")
-            .merge(product_sales_by_city_df, on="product_id", how="outer")
-            .fillna(0)
-        )
+        output_df = summary_df.merge(
+            product_ratings_df, on="product_id", how="outer"
+        ).fillna(0)
 
         output_df["order_purchase_week"] = output_df["order_purchase_week"].astype(str)
         # Set the output DataFrame as a property of the object
@@ -156,6 +151,23 @@ class DataCalculator:
             return input_df[input_df["product_id"].isin(product_list)]
         return input_df
 
+    def _merge_sales_dicts(self, dicts: pd.Series) -> Dict[str, Dict[str, int]]:
+        """Merges a series of sales dictionaries into a single dictionary.
+
+        Args:
+            dicts (pd.Series): A Pandas Series containing sales dictionaries.
+
+        Returns:
+            dict: The merged dictionary containing city as keys
+                and {"sales_count": x, "sales_sum": y} as values.
+        """
+        merged_data = defaultdict(lambda: defaultdict(int))
+        for cur_dict in dicts:
+            for city, sales_data in cur_dict.items():
+                merged_data[city]["sales_count"] += sales_data["sales_count"]
+                merged_data[city]["sales_sum"] += sales_data["sales_sum"]
+        return dict(merged_data)
+
     def calculate_summary(
         self, product_list: Optional[List[str]] = None
     ) -> pd.DataFrame:
@@ -169,8 +181,8 @@ class DataCalculator:
             pd.DataFrame: DataFrame containing the summary data.
         """
         merged_df = self.orders_object.merge(
-            self.order_items_object, on=OrderItemsSchema.order_id
-        )
+            self.customers_object, on=CustomersSchema.customer_id
+        ).merge(self.order_items_object, on=OrderItemsSchema.order_id)
 
         # Parse date columns
         merged_df["order_purchase_datetime"] = pd.to_datetime(
@@ -179,7 +191,11 @@ class DataCalculator:
 
         grouped_sales = (
             merged_df.groupby(
-                ["product_id", pd.Grouper(key="order_purchase_datetime", freq="W")]
+                [
+                    "product_id",
+                    CustomersSchema.customer_city,
+                    pd.Grouper(key="order_purchase_datetime", freq="W"),
+                ]
             )["price"]
             .agg(["sum", "count"])
             .reset_index()
@@ -192,9 +208,29 @@ class DataCalculator:
         grouped_sales = grouped_sales.rename(
             columns={"order_purchase_datetime": "order_purchase_week"}
         )
+        grouped_sales["city_sales"] = grouped_sales.apply(
+            lambda row: {
+                row["customer_city"]: {
+                    "sales_count": row["count"],
+                    "sales_sum": row["sum"],
+                }
+            },
+            axis=1,
+        )
+
+        summary_df = (
+            grouped_sales.groupby(["product_id", "order_purchase_week"])
+            .agg(
+                total_count=("count", "sum"),
+                total_sales_sum=("sum", "sum"),
+                city_sales=("city_sales", self._merge_sales_dicts),
+            )
+            .reset_index()
+        )
+
         if product_list and len(product_list) > 0:
-            grouped_sales = self._filter_df_on_product_list(grouped_sales, product_list)
-        return grouped_sales
+            summary_df = self._filter_df_on_product_list(summary_df, product_list)
+        return summary_df
 
     def calculate_product_ratings(
         self, product_list: Optional[List[str]] = None
@@ -226,54 +262,6 @@ class DataCalculator:
             )
         return product_ratings
 
-    def calculate_product_sales_by_city(
-        self, product_list: Optional[List[str]] = None
-    ) -> pd.DataFrame:
-        """Calculate the product sales by city data.
-
-        Args:
-            product_list (Optional[List[str]], optional):
-                List of product IDs to filter the dataset on. Defaults to None.
-
-        Returns:
-            pd.DataFrame: DataFrame containing the product sales by city data.
-        """
-        # Merge orders_object and customers_object on 'customer_id'
-        orders_customers_merged = self.orders_object.merge(
-            self.customers_object, on=CustomersSchema.customer_id
-        ).merge(self.order_items_object, on=OrderItemsSchema.order_id)
-
-        # Calculate sales count for each product_id and customer_city
-        product_city_sales = (
-            orders_customers_merged.groupby(
-                ["product_id", CustomersSchema.customer_city]
-            )["order_id"]
-            .count()
-            .reset_index()
-            .rename(columns={"order_id": "sales_count"})
-        )
-        # Sort by product_id and sales_count, then groupby product_id
-        sorted_product_city_sales = product_city_sales.sort_values(
-            by=["product_id", "sales_count"], ascending=[True, False]
-        )
-        top_3_selling_cities = (
-            sorted_product_city_sales.groupby("product_id")
-            .head(3)
-            .reset_index(drop=True)
-        )
-
-        # Group the top 3 selling cities by product_id into lists
-        grouped_top_3_selling_cities = (
-            top_3_selling_cities.groupby("product_id")[CustomersSchema.customer_city]
-            .apply(list)
-            .reset_index()
-        )
-        if product_list and len(product_list) > 0:
-            grouped_top_3_selling_cities = self._filter_df_on_product_list(
-                grouped_top_3_selling_cities, product_list
-            )
-        return grouped_top_3_selling_cities
-
     def save_output_to_parquet(self, output_directory: str) -> None:
         """Save the output to Parquet format.
 
@@ -288,27 +276,17 @@ class DataCalculator:
             elif os.path.isdir(item_path):
                 shutil.rmtree(item_path)
 
-        unique_product_ids = self.get_output["product_id"].unique()
-        num_partitions = max(1, len(unique_product_ids) // 1024)
+        # Convert the city_sales column to a string
+        output_data = self.get_output
+        output_data["city_sales"] = output_data["city_sales"].apply(str)
 
-        for partition_index in range(num_partitions):
-            start_index = partition_index * 1024
-            end_index = (partition_index + 1) * 1024
-            product_ids_partition = unique_product_ids[start_index:end_index]
-            output_df_partition = self.get_output[
-                self.get_output["product_id"].isin(product_ids_partition)
-            ]
+        # Convert the Pandas DataFrame to a Dask DataFrame
+        dask_output_data = dd.from_pandas(output_data, npartitions=10)
 
-            # Create a directory for partition
-            partition_dir = os.path.join(
-                output_directory, f"partition_{partition_index}"
-            )
-            os.makedirs(partition_dir, exist_ok=True)
-
-            table = pa.Table.from_pandas(output_df_partition)
-            pq.write_to_dataset(
-                table, root_path=partition_dir, partition_cols=["product_id"]
-            )
+        # Save the Dask DataFrame as Parquet files, partitioned by product_id
+        dask_output_data.to_parquet(
+            output_directory, engine="fastparquet", partition_on="product_id"
+        )
 
 
 if __name__ == "__main__":

@@ -1,9 +1,11 @@
 pandas>=1.5.3,<1.6
 pandera>=0.16.1,<0.17
+dask[complete]
+fastparquet
+s3fs
 pytest==7.4.0
 isort[pyproject]==5.12.0
 black==23.3.0
 pylint==2.17.4
 bandit[toml]==1.7.5
-pyarrow
 wheel
