@@ -30,3 +30,5 @@ To execute the unit tests, run `src/logic/test_etl.py`. This will help verify th
 ```shell
 export PYTHONPATH="src"
 ```
+
+To obtain output files for all product_ids when running `run.py`, please leave the product_list empty in the `config.yml` file.
